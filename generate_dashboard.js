@@ -394,12 +394,23 @@ const html = `<!DOCTYPE html>
   .reasoning li { margin: 2px 0; }
   .formula { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: #eef2ff; color: #3730a3; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
   .headline-reasoning { margin-top: -6px; margin-bottom: 16px; }
+  .tab-nav { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tab-btn { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  .tab-btn.active { background: #eef2ff; border-color: #6366f1; color: #3730a3; font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .info-note { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
 </style>
 </head>
 <body>
 <h1>中粮糖业 600737 · 糖周期辅助决策 Dashboard</h1>
 <div class="sub">数据日期 ${srLast.date} ｜ 生成时间 ${new Date().toISOString().slice(0, 10)} ｜ 反转概率模型 + 相关性分析</div>
+<div class="tab-nav">
+  <button type="button" class="tab-btn active" data-tab="model">行情与模型</button>
+  <button type="button" class="tab-btn" data-tab="info">信息源 / 资讯</button>
+</div>
 
+<div id="tab-model" class="tab-panel active">
 <div class="kpis">
   <div class="kpi"><div class="label">反转概率</div><div class="val">${kpi.reversalProb != null ? kpi.reversalProb.toFixed(1) + '%' : '—'}</div><div class="note">${kpi.reversalSignal || '待 monitor.js 生成'}</div></div>
   <div class="kpi"><div class="label">郑糖主力</div><div class="val">${kpi.srClose.toFixed(0)}</div><div class="note">历史分位 ${kpi.srPct}%（区间 ${kpi.srAllLow}~${kpi.srAllHigh}）</div></div>
@@ -446,10 +457,42 @@ const html = `<!DOCTYPE html>
 
   <div class="card wide"><h3>药用糖 / 公司事件时间轴（2025-2026 上涨的核心驱动）</h3><div id="c14" style="padding-top:6px"></div></div>
 </div>
+</div>
+
+<div id="tab-info" class="tab-panel">
+  <div class="card wide">
+    <h3>信息源 / 资讯使用说明</h3>
+    <div class="reasoning" style="margin-top:0">
+      本页是信息源跟踪与人工整理面板，用于记录“来源—因子—频率—影响维度”的映射关系，并归档近期关键信息。
+      目前不是实时新闻流；若未接入自动化采集，条目状态均以“待人工更新/复核”为准。
+    </div>
+  </div>
+  <div class="card wide"><h3>信息源列表</h3><div id="infoSources"></div></div>
+  <div class="card wide"><h3>近期重要资讯</h3><div id="recentNews"></div></div>
+</div>
 
 <script>
 const DATA = ${JSON.stringify(chartData)};
 const KPI = ${JSON.stringify(kpi)};
+const INFO_SOURCES = [
+  { category: '期货/现货行情', source: '郑商所/郑糖主力', contribution: '跟踪内盘价格趋势、均线与确认位/证伪位', frequency: '日更（交易日）', factors: '郑糖/统计、历史位置' },
+  { category: '期货/现货行情', source: 'ICE 原糖', contribution: '观察外盘糖价及内外盘联动强弱', frequency: '日更（交易日）', factors: '进口利润/内外价差、郑糖/统计' },
+  { category: '期货/现货行情', source: '国内现货糖价', contribution: '校验期现基差与现货需求温度', frequency: '日更/周更', factors: '郑糖/统计、行业供需' },
+  { category: '进口利润/内外价差', source: 'ICE + USD/CNY + 进口成本估算', contribution: '计算进口利润率与 z-score，评估进口供给压力', frequency: '日更（交易日）', factors: '进口利润/内外价差' },
+  { category: '气候/ENSO', source: 'NOAA/CPC ONI + 海温距平', contribution: '判断厄尔尼诺/拉尼娜状态及暖化速度', frequency: '月更（必要时周复核）', factors: 'ENSO气候' },
+  { category: '公司公告', source: '中粮糖业公告/业绩/分红/药用糖进展', contribution: '识别股价与糖价脱钩时的公司驱动', frequency: '事件驱动（公告发布后）', factors: '股价/公司因子' },
+  { category: '行业政策/供需', source: '产销数据、进口配额、库存、协会/海关口径', contribution: '确认供需拐点与政策扰动', frequency: '月更/季更', factors: '行业供需、郑糖/统计' },
+  { category: '宏观/汇率', source: 'USD/CNY 与商品风险偏好', contribution: '评估外盘折算成本与风险偏好变化', frequency: '日更', factors: '进口利润/内外价差、风险偏好' }
+];
+const RECENT_NEWS = [
+  { date: '${srLast.date}', category: '期货/现货行情', title: '模型快照：郑糖主力 ${kpi.srClose.toFixed(0)}，反转概率 ${kpi.reversalProb != null ? kpi.reversalProb.toFixed(1) + '%' : '—'}，当前为“${kpi.reversalSignal || '待 monitor.js 生成'}”。', impact: '待确认', factor: '郑糖/统计、历史位置' },
+  { date: '${srLast.date}', category: '进口利润/内外价差', title: '进口利润率 ${kpi.importMargin != null ? (kpi.importMargin >= 0 ? '+' : '') + kpi.importMargin + '%' : '—'}，z-score ${kpi.importZscore != null ? (kpi.importZscore >= 0 ? '+' : '') + kpi.importZscore : '—'}（低位通常对应外盘成本抬升）。', impact: '${kpi.importZscore != null && kpi.importZscore < -1.5 ? '偏多' : (kpi.importZscore != null && kpi.importZscore > 1.5 ? '偏空' : '中性')}', factor: '进口利润/内外价差' },
+  { date: '${srLast.date}', category: '气候/ENSO', title: 'ONI ${kpi.oniVal >= 0 ? '+' : ''}${kpi.oniVal.toFixed(2)}，暖化 ${kpi.oniWarming >= 0 ? '+' : ''}${kpi.oniWarming}，处于“${kpi.oniTag}”状态。', impact: '${kpi.oniTag === '厄尔尼诺' ? '偏多' : (kpi.oniTag === '拉尼娜' ? '偏空' : '中性')}', factor: 'ENSO气候' },
+  { date: '2026-06-01', category: '公司公告', title: '时间轴记录：涨停叙事聚焦行业景气度提升 + 药用糖业务突破 + 高比例分红。', impact: '偏多', factor: '股价/公司因子' },
+  { date: '2025-08-19', category: '公司公告', title: '时间轴记录：公司发布《股票交易异常波动公告》，提示短期交易风险。', impact: '待确认', factor: '股价/公司因子、风险控制' },
+  { date: '待人工更新', category: '行业政策/供需', title: '食糖产销、进口配额、库存与海关口径更新待录入。', impact: '待确认', factor: '行业供需、郑糖/统计' },
+  { date: '待人工更新', category: '宏观/汇率', title: 'USD/CNY 与商品风险偏好最新变动待人工复核。', impact: '待确认', factor: '进口利润/内外价差、风险偏好' }
+];
 
 function lineOpt(xData, series, markLine) {
   return {
@@ -823,7 +866,69 @@ function lineOpt(xData, series, markLine) {
     rows.map(r => '<tr><td style="text-align:left">' + r[0] + '</td><td>' + (r[1] == null ? '—' : r[1]) + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td><td style="text-align:left">' + r[4] + '</td></tr>').join('') + '</table>';
 })();
 
-window.addEventListener('resize', () => { for (const id of ['c1','c2','c3','c4','c5','c6','c8','c9','c10','c11','c13']) { const c = echarts.getInstanceByDom(document.getElementById(id)); if (c) c.resize(); } });
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function impactTag(impact) {
+  if (impact === '偏多') return 'red';
+  if (impact === '偏空') return 'blue';
+  if (impact === '中性') return 'gray';
+  return 'yellow';
+}
+function renderInfoSources() {
+  const groups = INFO_SOURCES.reduce((m, row) => {
+    if (!m[row.category]) m[row.category] = [];
+    m[row.category].push(row);
+    return m;
+  }, {});
+  document.getElementById('infoSources').innerHTML = Object.keys(groups).map(cat =>
+    '<div style="margin-bottom:12px">' +
+      '<div class="info-note"><span class="tag gray">' + esc(cat) + '</span></div>' +
+      '<table class="corr"><tr><th style="width:190px">信息源</th><th>对模型贡献</th><th style="width:130px">建议频率</th><th style="width:200px">影响维度</th></tr>' +
+      groups[cat].map(r => '<tr><td style="text-align:left">' + esc(r.source) + '</td><td style="text-align:left">' + esc(r.contribution) + '</td><td>' + esc(r.frequency) + '</td><td style="text-align:left">' + esc(r.factors) + '</td></tr>').join('') +
+      '</table>' +
+    '</div>'
+  ).join('');
+}
+function renderRecentNews() {
+  const groups = RECENT_NEWS.reduce((m, row) => {
+    if (!m[row.category]) m[row.category] = [];
+    m[row.category].push(row);
+    return m;
+  }, {});
+  document.getElementById('recentNews').innerHTML = Object.keys(groups).map(cat =>
+    '<div style="margin-bottom:12px">' +
+      '<div class="info-note"><span class="tag gray">' + esc(cat) + '</span></div>' +
+      '<table class="corr"><tr><th style="width:110px">日期</th><th>摘要</th><th style="width:90px">影响方向</th><th style="width:220px">影响维度</th></tr>' +
+      groups[cat].map(r => '<tr><td style="white-space:nowrap">' + esc(r.date) + '</td><td style="text-align:left">' + esc(r.title) + '</td><td><span class="tag ' + impactTag(r.impact) + '">' + esc(r.impact) + '</span></td><td style="text-align:left">' + esc(r.factor) + '</td></tr>').join('') +
+      '</table>' +
+    '</div>'
+  ).join('');
+}
+function resizeCharts() {
+  for (const id of ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c8', 'c9', 'c10', 'c11', 'c13']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const c = echarts.getInstanceByDom(el);
+    if (c) c.resize();
+  }
+}
+function setTab(tab) {
+  const isModel = tab === 'model';
+  document.getElementById('tab-model').classList.toggle('active', isModel);
+  document.getElementById('tab-info').classList.toggle('active', !isModel);
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-tab') === tab));
+  if (isModel) setTimeout(resizeCharts, 0);
+}
+document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => setTab(btn.getAttribute('data-tab'))));
+renderInfoSources();
+renderRecentNews();
+window.addEventListener('resize', resizeCharts);
 </script>
 </body>
 </html>`;
