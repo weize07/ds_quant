@@ -422,7 +422,7 @@ const html = `<!DOCTYPE html>
 </details>
 
 <div class="grid">
-  <div class="card wide"><h3>郑糖主力 20 年周期（月线，红色阴影=厄尔尼诺期）</h3><div id="c1" class="chart"></div></div>
+  <div class="card wide"><h3>郑糖主力 20 年周期 <select id="c1Mode" aria-label="气候展示模式" style="font-size:12px;font-weight:normal;margin-left:8px"><option value="interval">厄尔尼诺区间</option><option value="intensity">ONI距平强度</option></select></h3><div id="c1" class="chart"></div></div>
 
   <div class="card wide"><h3>郑糖量仓结构（价格 + 成交量 + 持仓量）<span id="quadTag" style="font-size:12px;color:#6b7280;margin-left:8px"></span></h3><div id="c9" class="chart"></div><details class="reasoning"><summary>展开量仓确认逻辑</summary><ul><li>成交量与持仓量用于确认价格信号质量：增仓上涨通常代表新多资金参与，减仓上涨更偏空头回补。</li><li>增仓下跌说明空头压力仍在，减仓下跌则可能是多头离场后的尾段释放。</li><li>当前仪表盘中量仓结构作为反转概率的确认/背离提示，不直接写入五维加权公式。</li></ul></details></div>
 
@@ -469,22 +469,43 @@ function lineOpt(xData, series, markLine) {
   const x = DATA.sr20y.map(p => p[0]);
   const y = DATA.sr20y.map(p => p[1]);
   const areas = DATA.elNino.map(p => [{ name: '厄尔尼诺', xAxis: p[0], itemStyle: { color: 'rgba(220,38,38,0.10)' } }, { xAxis: p[1] }]);
-  const opt = {
-    grid: { left: 60, right: 30, top: 30, bottom: 60 },
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: x },
-    yAxis: { type: 'value', scale: true, name: '元/吨' },
-    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 16, bottom: 30 }],
-    series: [{
-      name: '郑糖主力', type: 'line', data: y, showSymbol: false, lineStyle: { width: 1.5, color: '#dc2626' },
-      markLine: { silent: true, symbol: 'none', data: [
-        { yAxis: DATA.confirmLevel, label: { formatter: '确认位 5688', position: 'insideEndTop' }, lineStyle: { color: '#16a34a', type: 'dashed' } },
-        { yAxis: DATA.falsifyLevel, label: { formatter: '证伪位 5053', position: 'insideEndTop' }, lineStyle: { color: '#f59e0b', type: 'dashed' } }
-      ] },
-      markArea: { silent: true, data: areas }
-    }]
-  };
-  echarts.init(document.getElementById('c1')).setOption(opt);
+  const oniByMonth = new Map(DATA.oniBar);
+  const oni = x.map(month => oniByMonth.get(month) ?? null);
+  const chart = echarts.init(document.getElementById('c1'));
+  function render(mode) {
+    const intensity = mode === 'intensity';
+    const opt = {
+      grid: intensity
+        ? [{ left: 60, right: 30, top: 30, height: '52%' }, { left: 60, right: 30, top: '70%', height: '14%' }]
+        : { left: 60, right: 30, top: 30, bottom: 60 },
+      tooltip: { trigger: 'axis' },
+      xAxis: intensity
+        ? [{ type: 'category', data: x, axisLabel: { show: false } }, { type: 'category', data: x, gridIndex: 1 }]
+        : { type: 'category', data: x },
+      yAxis: intensity
+        ? [{ type: 'value', scale: true, name: '元/吨' }, { type: 'value', name: 'ONI距平（℃）', min: -3, max: 3, splitLine: { show: false }, gridIndex: 1 }]
+        : { type: 'value', scale: true, name: '元/吨' },
+      dataZoom: intensity
+        ? [{ type: 'inside', xAxisIndex: [0, 1] }, { type: 'slider', xAxisIndex: [0, 1], height: 16, bottom: 30 }]
+        : [{ type: 'inside' }, { type: 'slider', height: 16, bottom: 30 }],
+      series: [{
+        name: '郑糖主力', type: 'line', data: y, showSymbol: false, lineStyle: { width: 1.5, color: '#dc2626' },
+        markLine: { silent: true, symbol: 'none', data: [
+          { yAxis: DATA.confirmLevel, label: { formatter: '确认位 5688', position: 'insideEndTop' }, lineStyle: { color: '#16a34a', type: 'dashed' } },
+          { yAxis: DATA.falsifyLevel, label: { formatter: '证伪位 5053', position: 'insideEndTop' }, lineStyle: { color: '#f59e0b', type: 'dashed' } }
+        ] },
+        ...(intensity ? {} : { markArea: { silent: true, data: areas } })
+      }]
+    };
+    if (intensity) opt.series.push({
+      name: '海温距平强度', type: 'bar', xAxisIndex: 1, yAxisIndex: 1,
+      data: oni.map(v => ({ value: v, itemStyle: { color: v >= 0.5 ? '#dc2626' : (v <= -0.5 ? '#2563eb' : '#9ca3af') } }))
+    });
+    chart.setOption(opt, true);
+  }
+  const mode = document.getElementById('c1Mode');
+  render(mode.value);
+  mode.addEventListener('change', () => render(mode.value));
 })();
 
 // C2 郑糖日线
