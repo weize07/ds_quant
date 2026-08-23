@@ -66,6 +66,20 @@ function oniToMonthly(oni) {
 function monthIndex(ym) { const [y, m] = ym.split('-').map(Number); return y * 12 + (m - 1); }
 function ymFromIndex(i) { const y = Math.floor(i / 12), m = i % 12 + 1; return `${y}-${String(m).padStart(2, '0')}`; }
 
+function normalizeProbHistDates(hist, daily) {
+  if (!hist.length || !daily.length) return hist;
+  const dates = hist.map(x => x.date).filter(Boolean);
+  const uniqueDates = new Set(dates);
+  if (uniqueDates.size !== 1 || hist.length <= 1) return hist;
+
+  const anchor = dates[0];
+  const marketDates = daily.map(x => x.date).filter(d => d <= anchor);
+  if (marketDates.length < hist.length) return hist;
+
+  const inferredDates = marketDates.slice(-hist.length);
+  return hist.map((row, i) => ({ ...row, date: inferredDates[i] }));
+}
+
 // 对齐两个月度序列到共同月份网格，返回连续数组（缺省为 null）
 function alignMonthly(a, b) {
   const mapA = new Map(a.map(x => [x.ym, x]));
@@ -277,6 +291,7 @@ try {
     }
   }
 } catch (e) {}
+probHist = normalizeProbHistDates(probHist, sr);
 
 // 反转概率（读最新 history.csv）
 let reversalProb = null, reversalSignal = '';
@@ -378,6 +393,8 @@ const html = `<!DOCTYPE html>
   .reasoning ul { margin: 6px 0 0 18px; }
   .reasoning li { margin: 2px 0; }
   .formula { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: #eef2ff; color: #3730a3; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
+  .kpi .reasoning { margin-top: 8px; padding: 6px 8px; font-size: 11px; line-height: 1.45; }
+  .kpi .formula { font-size: 10px; white-space: normal; }
 </style>
 </head>
 <body>
@@ -385,7 +402,7 @@ const html = `<!DOCTYPE html>
 <div class="sub">数据日期 ${srLast.date} ｜ 生成时间 ${new Date().toISOString().slice(0, 10)} ｜ 反转概率模型 + 相关性分析</div>
 
 <div class="kpis">
-  <div class="kpi"><div class="label">反转概率</div><div class="val">${kpi.reversalProb != null ? kpi.reversalProb.toFixed(1) + '%' : '—'}</div><div class="note">${kpi.reversalSignal || '待 monitor.js 生成'}</div></div>
+  <div class="kpi"><div class="label">反转概率</div><div class="val">${kpi.reversalProb != null ? kpi.reversalProb.toFixed(1) + '%' : '—'}</div><div class="note">${kpi.reversalSignal || '待 monitor.js 生成'}</div><details class="reasoning"><summary>展开概率解释</summary><p>当前数值表示糖周期反转信号的综合确认度，不是胜率承诺。</p><div class="formula">模型解释/假设：20%×ENSO + 30%×郑糖/统计 + 15%×进口利润 + 20%×股价 + 15%×历史位置，再经确认位/证伪位门控。</div></details></div>
   <div class="kpi"><div class="label">郑糖主力</div><div class="val">${kpi.srClose.toFixed(0)}</div><div class="note">历史分位 ${kpi.srPct}%（区间 ${kpi.srAllLow}~${kpi.srAllHigh}）</div></div>
   <div class="kpi"><div class="label">中粮糖业</div><div class="val">${kpi.stClose.toFixed(2)}</div><div class="note ${kpi.stPnl >= 0 ? 'up' : 'down'}">盈亏 ${kpi.stPnl >= 0 ? '+' : ''}${kpi.stPnl}%（成本 ${kpi.stCost}）</div></div>
   <div class="kpi"><div class="label">ICE 原糖</div><div class="val">${kpi.iceClose != null ? kpi.iceClose.toFixed(2) : '—'}</div><div class="note">美分/磅 ｜ 汇率 ${kpi.fx.toFixed(2)}</div></div>
