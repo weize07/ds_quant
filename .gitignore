@@ -1,0 +1,21 @@
+# ===== 数据缓存（脚本可自动重新抓取，不入库） =====
+data/
+
+# ===== 每日信号卡（可重新生成，不入库） =====
+reports/
+
+# ===== ECharts 本地库（运行 download_echarts.js 可重新下载，1MB） =====
+lib/
+
+# ===== 调试输出 =====
+net_test_result.json
+
+# ===== 日志 =====
+*.log
+
+# ===== Node =====
+node_modules/
+
+# ===== 系统文件 =====
+.DS_Store
+Thumbs.db
