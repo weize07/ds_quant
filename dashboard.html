@@ -34,8 +34,7 @@
   .reasoning ul { margin: 6px 0 0 18px; }
   .reasoning li { margin: 2px 0; }
   .formula { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: #eef2ff; color: #3730a3; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
-  .kpi .reasoning { margin-top: 8px; padding: 6px 8px; font-size: 11px; line-height: 1.45; }
-  .kpi .formula { font-size: 10px; white-space: normal; }
+  .headline-reasoning { margin-top: -6px; margin-bottom: 16px; }
 </style>
 </head>
 <body>
@@ -43,13 +42,25 @@
 <div class="sub">数据日期 2026-08-21 ｜ 生成时间 2026-08-22 ｜ 反转概率模型 + 相关性分析</div>
 
 <div class="kpis">
-  <div class="kpi"><div class="label">反转概率</div><div class="val">66.6%</div><div class="note">🟡 持有观察区</div><details class="reasoning"><summary>展开概率解释</summary><p>当前数值表示糖周期反转信号的综合确认度，不是胜率承诺。</p><div class="formula">模型解释/假设：20%×ENSO + 30%×郑糖/统计 + 15%×进口利润 + 20%×股价 + 15%×历史位置，再经确认位/证伪位门控。</div></details></div>
+  <div class="kpi"><div class="label">反转概率</div><div class="val">66.6%</div><div class="note">🟡 持有观察区</div></div>
   <div class="kpi"><div class="label">郑糖主力</div><div class="val">5383</div><div class="note">历史分位 46.4%（区间 2807~7548）</div></div>
   <div class="kpi"><div class="label">中粮糖业</div><div class="val">14.56</div><div class="note up">盈亏 +9.5%（成本 13.3）</div></div>
   <div class="kpi"><div class="label">ICE 原糖</div><div class="val">17.60</div><div class="note">美分/磅 ｜ 汇率 6.73</div></div>
   <div class="kpi"><div class="label">进口利润率</div><div class="val">+12%</div><div class="note">z-score -2.93｜极低→偏多</div></div>
   <div class="kpi"><div class="label">厄尔尼诺 ONI</div><div class="val">+1.39</div><div class="note"><span class="tag red">厄尔尼诺</span> 暖化+1.28｜因子80分</div></div>
 </div>
+<details class="reasoning headline-reasoning">
+  <summary>展开“反转概率”模型说明与当前观察要点</summary>
+  <p>“反转概率”是本仪表盘用于辅助决策的模型评分，表示糖周期出现反转/上行条件的综合确认度；它不是对未来涨跌的保证，也不是可直接当作胜率或仓位建议的预测。</p>
+  <p>当前 66.6% 被标记为“持有观察区”，表示可见因子已提供一定偏多的反转线索，但尚不足以替代价格确认。应继续观察郑糖是否突破确认位 5688；若跌破证伪位 5053，则反转假设被削弱，模型会限制该信号的上限。</p>
+  <div class="formula">仪表盘模型假设：反转概率 ≈ 20%×ENSO气候 + 30%×郑糖/统计 + 15%×进口利润/内外价差 + 20%×股价/公司因子 + 15%×历史位置；再经确认位/证伪位门控。</div>
+  <ul>
+    <li>以上权重是仪表盘的模型解释/假设，并非分别由外部来源直接给出的预测权重。ENSO 维度观察 ONI 水平与暖化速度；郑糖/统计维度综合均线、动量、z-score 和历史分位。</li>
+    <li>进口利润/内外价差维度用于衡量进口糖对内盘的供给压力：利润率低或倒挂较深时，进口冲击较弱，对内盘相对偏多。股价/公司因子则关注中粮糖业自身价格趋势和风险线；历史位置用于判断当前价格是否仍处在具备均值回归或上行赔率的区间。</li>
+    <li>分数越高，代表这些维度共同支持“反转/上行准备度”的程度越强，而非价格必然上涨。量价、成交量与持仓量只作为确认或背离提示，不伪装成固定加权项。</li>
+    <li>实际使用时，应以价格、成交量和持仓量是否同步确认为准，并遵守确认位、证伪位及个股风险线；若因子改善但价格未确认，或价格跌破风险位，应将其视为需要复核或否定的信号。</li>
+  </ul>
+</details>
 
 <div class="grid">
   <div class="card wide"><h3>郑糖主力 20 年周期（月线，红色阴影=厄尔尼诺期）</h3><div id="c1" class="chart"></div></div>
