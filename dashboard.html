@@ -28,6 +28,12 @@
   .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
   .tag.red { background: #fee2e2; color: #b91c1c; } .tag.blue { background: #dbeafe; color: #1d4ed8; } .tag.gray { background: #e5e7eb; color: #4b5563; }
   .tag.green { background: #dcfce7; color: #15803d; } .tag.yellow { background: #fef9c3; color: #a16207; }
+  .reasoning { margin-top: 10px; padding: 9px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; color: #4b5563; font-size: 12px; line-height: 1.6; }
+  .reasoning summary { cursor: pointer; color: #374151; font-weight: 600; }
+  .reasoning summary:hover { color: #111827; }
+  .reasoning ul { margin: 6px 0 0 18px; }
+  .reasoning li { margin: 2px 0; }
+  .formula { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: #eef2ff; color: #3730a3; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
 </style>
 </head>
 <body>
@@ -46,25 +52,25 @@
 <div class="grid">
   <div class="card wide"><h3>郑糖主力 20 年周期（月线，红色阴影=厄尔尼诺期）</h3><div id="c1" class="chart"></div></div>
 
-  <div class="card wide"><h3>郑糖量仓结构（价格 + 成交量 + 持仓量）<span id="quadTag" style="font-size:12px;color:#6b7280;margin-left:8px"></span></h3><div id="c9" class="chart"></div></div>
+  <div class="card wide"><h3>郑糖量仓结构（价格 + 成交量 + 持仓量）<span id="quadTag" style="font-size:12px;color:#6b7280;margin-left:8px"></span></h3><div id="c9" class="chart"></div><details class="reasoning"><summary>展开量仓确认逻辑</summary><ul><li>成交量与持仓量用于确认价格信号质量：增仓上涨通常代表新多资金参与，减仓上涨更偏空头回补。</li><li>增仓下跌说明空头压力仍在，减仓下跌则可能是多头离场后的尾段释放。</li><li>当前仪表盘中量仓结构作为反转概率的确认/背离提示，不直接写入五维加权公式。</li></ul></details></div>
 
   <div class="card"><h3>郑糖近一年（日线 + MA20/MA60 + 关键位）</h3><div id="c2" class="chart"></div></div>
   <div class="card"><h3>中粮糖业近一年（日线 + 成交量）</h3><div id="c3" class="chart"></div></div>
 
-  <div class="card"><h3>厄尔尼诺/拉尼娜指数 ONI（2005至今）<span id="oniNote" style="font-size:12px;color:#6b7280;font-weight:normal;margin-left:8px"></span></h3><div id="c4" class="chart"></div></div>
-  <div class="card"><h3>ONI 领先郑糖的滞后相关（核心分析）</h3><div id="c5" class="chart"></div></div>
+  <div class="card"><h3>厄尔尼诺/拉尼娜指数 ONI（2005至今）<span id="oniNote" style="font-size:12px;color:#6b7280;font-weight:normal;margin-left:8px"></span></h3><div id="c4" class="chart"></div><details class="reasoning"><summary>展开 ENSO 气候因子解释</summary><ul><li>ONI ≥ +0.5 通常定义为厄尔尼诺，ONI ≤ -0.5 通常定义为拉尼娜。</li><li>气候因子打分反映天气扰动对甘蔗/甜菜产量和供应预期的领先影响，强厄尔尼诺给较高但不满分的确认度。</li><li>暖化速度用于提示短期过热或回调风险：快速升温可能提高波动，不等同于价格立即上涨。</li></ul></details></div>
+  <div class="card"><h3>ONI 领先郑糖的滞后相关（核心分析）</h3><div id="c5" class="chart"></div><details class="reasoning"><summary>展开 ONI 领先滞后公式</summary><div class="formula">r(lag) = corr(ONI_t, 郑糖收益率_{t+lag})</div><ul><li>柱子表示 ONI 对未来不同月份郑糖表现的相关系数，最高柱对应历史上最强的传导滞后。</li><li>相关系数接近 +1 为同向，接近 -1 为反向，接近 0 代表线性关系弱。</li><li>该结果只说明历史统计关系，仍需价格、进口利润和量仓结构共同确认。</li></ul></details></div>
 
-  <div class="card"><h3>统计因子：郑糖 z-score（价 vs 250日均值的标准差）</h3><div id="c11" class="chart"></div></div>
-  <div class="card"><h3>统计因子：20日年化波动率 + 多周期分位</h3><div id="c12" style="padding-top:8px"></div></div>
+  <div class="card"><h3>统计因子：郑糖 z-score（价 vs 250日均值的标准差）</h3><div id="c11" class="chart"></div><details class="reasoning"><summary>展开 z-score 计算说明</summary><div class="formula">z = (当前价格 - 250日均价) / 250日标准差</div><ul><li>z-score 衡量价格偏离长期均值的程度，|z| 越大代表越极端。</li><li>接近 -2σ 常被视为偏低/均值回归候选，接近 +2σ 则提示偏高或追涨风险。</li><li>该统计因子主要进入“郑糖/统计”维度，需结合趋势突破确认位判断。</li></ul></details></div>
+  <div class="card"><h3>统计因子：20日年化波动率 + 多周期分位</h3><div id="c12" style="padding-top:8px"></div><details class="reasoning"><summary>展开波动率/分位解释</summary><div class="formula">20日年化波动率 ≈ std(日收益率, 20) × √252</div><ul><li>历史分位 = 当前价格在所选历史区间内所处的位置百分比。</li><li>低分位说明估值/价格位置偏低，上行赔率更好；高分位说明价格已处相对高位。</li><li>低波动向高波动切换时，若价格同步突破，趋势确认度更高。</li></ul></details></div>
 
   <div class="card"><h3>郑糖 vs 中粮糖业股价（月度散点 + 回归线）</h3><div id="c6" class="chart"></div></div>
-  <div class="card"><h3>相关性结论</h3><div id="c7" style="padding-top:10px"></div></div>
+  <div class="card"><h3>相关性结论</h3><div id="c7" style="padding-top:10px"></div><details class="reasoning"><summary>展开相关系数解读</summary><ul><li>r ≥ 0.7：强正相关；r ≤ -0.7：强负相关；|r| 在 0.4~0.7：中等相关；接近 0：弱相关。</li><li>负相关或滚动相关转弱时，说明股价可能更多受公司事件、分红或主题驱动，而非糖价本身。</li><li>相关性不是因果关系，只用于校验“糖周期反转”是否能够传导到公司股价。</li></ul></details></div>
 
   <div class="card wide"><h3>郑糖与股价的相关性随时间变化（12个月滚动相关系数）</h3><div id="c8" class="chart"></div></div>
 
-  <div class="card wide"><h3>反转概率历史轨迹 + 各维度得分演变</h3><div id="c10" class="chart"></div></div>
+  <div class="card wide"><h3>反转概率历史轨迹 + 各维度得分演变</h3><div id="c10" class="chart"></div><details class="reasoning"><summary>展开反转概率评分公式</summary><p>当前仪表盘评分解释模型沿用监控脚本的五维权重；若历史数据缺少某一维度，则图中仅展示已有维度曲线。</p><div class="formula">反转概率 ≈ 20%×ENSO气候 + 30%×郑糖/统计 + 15%×进口利润/内外价差 + 20%×股价/公司因子 + 15%×历史位置</div><ul><li>价格确认门控：郑糖突破 5688 时提高反转确认度；跌破 5053 时压低反转概率上限。</li><li>ENSO 维度关注 ONI 水平和升温速度；郑糖/统计维度关注均线、动量、z-score 与分位；股价维度关注公司价格趋势和风险线。</li><li>进口利润 z-score 反映“外强内弱”：利润率越低/倒挂越深，进口冲击越弱，对内盘偏多。</li><li>量仓结构由上方“成交量 + 持仓量”卡片提供确认：当前作为辅助确认项，不伪装成已有固定权重。</li></ul></details></div>
 
-  <div class="card wide"><h3>进口利润率 + z-score 历史（"外强内弱"压缩可视化）</h3><div id="c13" class="chart"></div></div>
+  <div class="card wide"><h3>进口利润率 + z-score 历史（"外强内弱"压缩可视化）</h3><div id="c13" class="chart"></div><details class="reasoning"><summary>展开进口利润率/z-score 公式</summary><div class="formula">进口利润率 = (郑糖价格 - 配额外进口成本) / 配额外进口成本</div><div class="formula">进口利润 z-score = (当前利润率 - 250日均值) / 250日标准差</div><ul><li>利润率 &gt; 0：进口糖有利可图，可能增加供给、压制内盘。</li><li>利润率 &lt; 0：进口倒挂，外盘强势传导为进口成本上升，对国内价格偏多。</li><li>z-score 低于 -1.5 视为进口利润极低/倒挂偏深，模型中偏多；高于 +1.5 则偏空。</li></ul></details></div>
 
   <div class="card wide"><h3>药用糖 / 公司事件时间轴（2025-2026 上涨的核心驱动）</h3><div id="c14" style="padding-top:6px"></div></div>
 </div>
