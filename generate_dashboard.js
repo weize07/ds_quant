@@ -424,7 +424,7 @@ const html = `<!DOCTYPE html>
 <div class="grid">
   <div class="card wide"><h3>郑糖主力 20 年周期 <select id="c1Mode" aria-label="气候展示模式" style="font-size:12px;font-weight:normal;margin-left:8px"><option value="interval">厄尔尼诺区间</option><option value="intensity">ONI距平强度</option></select></h3><div id="c1" class="chart"></div></div>
 
-  <div class="card wide"><h3>郑糖量仓结构（价格 + 成交量 + 持仓量）<span id="quadTag" style="font-size:12px;color:#6b7280;margin-left:8px"></span></h3><div id="c9" class="chart"></div><details class="reasoning"><summary>展开量仓确认逻辑</summary><ul><li>成交量与持仓量用于确认价格信号质量：增仓上涨通常代表新多资金参与，减仓上涨更偏空头回补。</li><li>增仓下跌说明空头压力仍在，减仓下跌则可能是多头离场后的尾段释放。</li><li>当前仪表盘中量仓结构作为反转概率的确认/背离提示，不直接写入五维加权公式。</li></ul></details></div>
+  <div class="card wide"><h3>郑糖量仓结构（价格 + 成交量 + 持仓量 + 持仓变化）<span id="quadTag" style="font-size:12px;color:#6b7280;margin-left:8px"></span></h3><div id="c9" class="chart" style="height:360px"></div><details class="reasoning"><summary>展开量仓确认逻辑</summary><ul><li><b>持仓量（绝对水平）</b>看“仓位高不高、趋势向上还是向下”；<b>持仓量MA20</b>用于判断当前持仓相对趋势是扩张还是回落。</li><li><b>持仓变化 ΔOI / 仓差</b>看“当天是否在增仓或减仓”：红柱（ΔOI&gt;0）=增仓，绿柱（ΔOI&lt;0）=减仓，柱体越大表示资金变化越快。</li><li><b>增仓涨</b>常见于趋势确认（新多入场）；<b>减仓涨</b>更常见于空头回补；<b>增仓跌</b>多为空头加码；<b>减仓跌</b>多为多头止损/离场。若价格方向与持仓变化长期不一致，通常代表分歧或背离。</li><li>实务上优先看“价格方向 + 持仓趋势 + ΔOI 同步性”：三者同向时确认度更高；若仅价格动而持仓与ΔOI不配合，需防范短线挤仓或趋势衰减。</li><li>当前仪表盘中量仓结构作为反转概率的确认/背离提示，不直接写入五维加权公式。</li></ul></details></div>
 
   <div class="card"><h3>郑糖近一年（日线 + MA20/MA60 + 关键位）</h3><div id="c2" class="chart"></div></div>
   <div class="card"><h3>中粮糖业近一年（日线 + 成交量）</h3><div id="c3" class="chart"></div></div>
@@ -640,30 +640,65 @@ function lineOpt(xData, series, markLine) {
 
 // C9 郑糖量仓结构
 (function () {
-  const x = DATA.srVolPos.map(p => p.d);
+  const rows = DATA.srVolPos;
+  const x = rows.map(p => p.d);
+  const oi = rows.map(p => p.p);
+  const oiMa20 = oi.map((_, i) => {
+    if (i < 19) return null;
+    let sum = 0;
+    for (let j = i - 19; j <= i; j++) sum += oi[j];
+    return +(sum / 20).toFixed(0);
+  });
+  const oiChange = oi.map((v, i) => i === 0 ? null : v - oi[i - 1]);
   const q = DATA.srQuad;
   document.getElementById('quadTag').innerHTML = '近20日：增仓涨 ' + q.upPos + ' 天 ｜ 减仓涨 ' + q.upNeg + ' 天 ｜ 增仓跌 ' + q.downPos + ' 天 ｜ 减仓跌 ' + q.downNeg + ' 天';
   const opt = {
-    grid: [{ left: 60, right: 20, top: 30, height: '45%' }, { left: 60, right: 20, top: '62%', height: '13%' }, { left: 60, right: 20, top: '82%', height: '13%' }],
-    tooltip: { trigger: 'axis' },
+    grid: [
+      { left: 60, right: 20, top: 30, height: '35%' },
+      { left: 60, right: 20, top: '48%', height: '14%' },
+      { left: 60, right: 20, top: '66%', height: '14%' },
+      { left: 60, right: 20, top: '84%', height: '12%' }
+    ],
+    tooltip: {
+      trigger: 'axis',
+      formatter: params => {
+        const lines = [params[0] && params[0].axisValueLabel ? params[0].axisValueLabel : ''];
+        for (const p of params) {
+          if (p.value == null || p.value === '') continue;
+          lines.push(p.marker + p.seriesName + '：' + p.value);
+        }
+        return lines.filter(Boolean).join('<br>');
+      }
+    },
     legend: { top: 0 },
     xAxis: [
       { type: 'category', data: x, boundaryGap: false, gridIndex: 0 },
       { type: 'category', data: x, gridIndex: 1, axisLabel: { show: false } },
-      { type: 'category', data: x, gridIndex: 2, axisLabel: { show: false } }
+      { type: 'category', data: x, gridIndex: 2, axisLabel: { show: false } },
+      { type: 'category', data: x, gridIndex: 3 }
     ],
     yAxis: [
-      { type: 'value', scale: true, gridIndex: 0 },
-      { type: 'value', gridIndex: 1, axisLabel: { show: false }, splitLine: { show: false } },
-      { type: 'value', gridIndex: 2, axisLabel: { show: false }, splitLine: { show: false } }
+      { type: 'value', scale: true, gridIndex: 0, name: '元/吨' },
+      { type: 'value', gridIndex: 1, name: '成交量', axisLabel: { show: false }, splitLine: { show: false } },
+      { type: 'value', gridIndex: 2, name: '持仓量', axisLabel: { show: false }, splitLine: { show: false } },
+      { type: 'value', gridIndex: 3, name: 'ΔOI', splitLine: { show: false } }
     ],
-    dataZoom: [{ type: 'inside', xAxisIndex: [0, 1, 2] }],
+    dataZoom: [{ type: 'inside', xAxisIndex: [0, 1, 2, 3] }],
     series: [
-      { name: '郑糖', type: 'line', data: DATA.srVolPos.map(p => p.c), showSymbol: false, lineStyle: { width: 1.5, color: '#dc2626' } },
-      { name: 'MA20', type: 'line', data: DATA.srVolPos.map(p => p.m20), showSymbol: false, lineStyle: { width: 1, color: '#2563eb' } },
-      { name: 'MA60', type: 'line', data: DATA.srVolPos.map(p => p.m60), showSymbol: false, lineStyle: { width: 1, color: '#f59e0b' } },
-      { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: DATA.srVolPos.map((p, i) => ({ value: p.v, itemStyle: { color: i > 0 && p.c >= DATA.srVolPos[i - 1].c ? '#dc2626' : '#16a34a' } })) },
-      { name: '持仓量', type: 'line', xAxisIndex: 2, yAxisIndex: 2, data: DATA.srVolPos.map(p => p.p), showSymbol: false, lineStyle: { width: 1.5, color: '#8b5cf6' } }
+      { name: '郑糖收盘', type: 'line', data: rows.map(p => p.c), showSymbol: false, lineStyle: { width: 1.5, color: '#dc2626' } },
+      { name: '郑糖MA20', type: 'line', data: rows.map(p => p.m20), showSymbol: false, lineStyle: { width: 1, color: '#2563eb' } },
+      { name: '郑糖MA60', type: 'line', data: rows.map(p => p.m60), showSymbol: false, lineStyle: { width: 1, color: '#f59e0b' } },
+      { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: rows.map((p, i) => ({ value: p.v, itemStyle: { color: i > 0 && p.c >= rows[i - 1].c ? '#dc2626' : '#16a34a' } })) },
+      { name: '持仓量', type: 'line', xAxisIndex: 2, yAxisIndex: 2, data: oi, showSymbol: false, lineStyle: { width: 1.5, color: '#8b5cf6' } },
+      { name: '持仓量MA20', type: 'line', xAxisIndex: 2, yAxisIndex: 2, data: oiMa20, showSymbol: false, lineStyle: { width: 1, color: '#6d28d9', type: 'dashed' } },
+      {
+        name: '持仓变化ΔOI',
+        type: 'bar',
+        xAxisIndex: 3,
+        yAxisIndex: 3,
+        data: oiChange.map(v => v == null ? null : ({ value: v, itemStyle: { color: v >= 0 ? '#dc2626' : '#16a34a' } })),
+        markLine: { silent: true, symbol: 'none', data: [{ yAxis: 0, lineStyle: { color: '#9ca3af', type: 'dashed' } }] }
+      }
     ]
   };
   echarts.init(document.getElementById('c9')).setOption(opt);
