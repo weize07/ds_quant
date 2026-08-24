@@ -364,16 +364,18 @@ let HIST_DATA = {};
 try { HIST_DATA = JSON.parse(fs.readFileSync(path.join(DATA, 'fundamentals_history.json'), 'utf8')); } catch (e) { HIST_DATA = {}; }
 
 // ===================== HTML 模板 =====================
-const hasLocalEcharts = fs.existsSync(path.join(ROOT, 'lib', 'echarts.min.js'));
-const echartsSrc = hasLocalEcharts ? 'lib/echarts.min.js' : 'https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js';
-
+// ECharts 加载：先试本地 lib/（离线可用），404 时自动回退 CDN（GitHub Pages 上 lib/ 不在仓库里）
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>中粮糖业 600737 辅助决策 Dashboard</title>
-<script src="${echartsSrc}"></script>
+<link rel="icon" href="data:,">
+<script>
+if(typeof echarts==='undefined'){document.write('<script src="lib/echarts.min.js"><\\/script>');}
+if(typeof echarts==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\\/script>');}
+</script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f7fa; color: #1f2937; padding: 16px; }
