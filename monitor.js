@@ -16,6 +16,7 @@ const ROOT = __dirname;
 const DATA = path.join(ROOT, 'data');
 const REPORTS = path.join(ROOT, 'reports');
 const OFFLINE = process.argv.includes('--offline');
+const { append: appendHist } = require('./lib/history');
 
 // ===================== 可配置参数（按你的情况调） =====================
 const CONFIG = {
@@ -141,6 +142,34 @@ async function fetchFX() {
   return fx;
 }
 
+async function fetchSpot() {
+  // 沐甜科技 现货报价（广西南宁/云南昆明），从列表页预览文本提取
+  const url = 'https://www.msweet.com.cn/mtkj/xwzx62/xh32/index.html';
+  const r = await get(url, { headers: { 'Referer': 'https://www.msweet.com.cn/' } });
+  const txt = r.body.replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&amp;/g, ' ').replace(/\s+/g, ' ');
+  const nanning = txt.match(/南宁[^，。；]{0,40}?报价?(\d{3,5})(?:[-~](\d{3,5}))?\s*元/);
+  const kunming = txt.match(/云南昆明[^，。；]{0,40}?报价?(\d{3,5})(?:[-~](\d{3,5}))?\s*元/);
+  if (!nanning && !kunming) throw new Error('现货价格提取失败');
+  return { date: new Date().toISOString().slice(0, 10), nanning: nanning ? +nanning[1] : null, kunming: kunming ? +kunming[1] : null, source: '沐甜科技' };
+}
+
+async function fetchImport() {
+  // 沐甜科技 月度食糖进口量（海关数据，沐甜每月18日左右发布）
+  const url = 'https://www.msweet.com.cn/mtkj/xwzx62/sj26/jck5/index.html';
+  const r = await get(url, { headers: { 'Referer': 'https://www.msweet.com.cn/' } });
+  const txt = r.body.replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&amp;/g, ' ').replace(/\s+/g, ' ');
+  const re = /(\d{4})年(\d{1,2})月份我国进口食糖(\d+)万吨，同比(减少|增加)(\d+)万吨/g;
+  const months = [];
+  let m;
+  while ((m = re.exec(txt))) months.push({ year: +m[1], month: +m[2], importMt: +m[3], yoyDir: m[4], yoyMt: +m[5] });
+  if (!months.length) throw new Error('进口数据提取失败');
+  const seen = new Set();
+  const uniq = [];
+  for (const x of months) { const k = x.year + '-' + x.month; if (!seen.has(k)) { seen.add(k); uniq.push(x); } }
+  uniq.sort((a, b) => (a.year - b.year) || (a.month - b.month));
+  return { latest: uniq[uniq.length - 1], history: uniq, source: '沐甜科技(海关)' };
+}
+
 function readCached(fname) {
   const p = path.join(DATA, fname);
   return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null;
@@ -148,7 +177,7 @@ function readCached(fname) {
 
 async function loadData() {
   if (!fs.existsSync(DATA)) fs.mkdirSync(DATA, { recursive: true });
-  let st = null, sr = null, oni = null, ice = null, fx = null;
+  let st = null, sr = null, oni = null, ice = null, fx = null, spot = null, imp = null, iceQuote = null;
   const warns = [];
 
   if (!OFFLINE) {
@@ -156,7 +185,10 @@ async function loadData() {
     try { sr = await fetchSR0(); fs.writeFileSync(path.join(DATA, 'SR0_daily.csv'), 'date,open,high,low,close,volume,position,settle\n' + sr.map(x => [x.date, x.open, x.high, x.low, x.close, x.volume, x.position, x.settle].join(',')).join('\n')); } catch (e) { warns.push('郑糖抓取失败:' + e.message); }
     try { oni = await fetchONI(); fs.writeFileSync(path.join(DATA, 'ONI_enso.txt'), 'SEAS YR TOTAL ANOM\n' + oni.map(x => `${x.seas} ${x.year} 0 ${x.anom}`).join('\n')); } catch (e) { warns.push('ONI抓取失败:' + e.message); }
     try { ice = await fetchICE(); fs.writeFileSync(path.join(DATA, 'ICE_sugar_daily.csv'), 'date,open,close,high,low,volume,amount\n' + ice.map(x => [x.date, x.open, x.close, x.high, x.low, x.volume, x.amount].join(',')).join('\n')); } catch (e) { try { const q = await fetchICEquote(); ice = [q]; warns.push('ICE历史限流，改用实时报价'); } catch (e2) { warns.push('ICE抓取失败:' + e.message); } }
+    try { iceQuote = await fetchICEquote(); } catch (e) { /* 盘中实时报价失败忽略，不影响收盘数据 */ }
     try { fx = await fetchFX(); fs.writeFileSync(path.join(DATA, 'fx_usdcny.json'), JSON.stringify({ usdcny: fx, date: new Date().toISOString().slice(0, 10) })); } catch (e) { warns.push('汇率抓取失败:' + e.message); }
+    try { spot = await fetchSpot(); fs.writeFileSync(path.join(DATA, 'spot_price.json'), JSON.stringify(spot)); } catch (e) { warns.push('现货抓取失败:' + e.message); }
+    try { imp = await fetchImport(); fs.writeFileSync(path.join(DATA, 'import_data.json'), JSON.stringify(imp)); } catch (e) { warns.push('进口抓取失败:' + e.message); }
   }
 
   if (!st) { const c = readCached('600737_daily.csv'); if (c) { const l = c.trim().split('\n').slice(1); st = l.map(x => { const p = x.split(','); return { date: p[0], open: +p[1], close: +p[2], high: +p[3], low: +p[4], volume: +p[5], amount: +p[6] }; }); warns.push('600737使用缓存'); } }
@@ -165,8 +197,10 @@ async function loadData() {
   if (!ice) { const c = readCached('ICE_sugar_daily.csv'); if (c) { const l = c.trim().split('\n').slice(1); ice = l.filter(x => x.split(',')[2] && +x.split(',')[2] > 0).map(x => { const p = x.split(','); return { date: p[0], open: +p[1], close: +p[2], high: +p[3], low: +p[4], volume: +p[5], amount: +p[6] }; }); if (ice.length) warns.push('ICE使用缓存'); } }
   if (!fx) { const c = readCached('fx_usdcny.json'); if (c) { try { fx = JSON.parse(c).usdcny; warns.push('汇率使用缓存'); } catch (e) {} } }
   if (!fx) { fx = 7.0; warns.push('汇率用默认值7.0'); }
+  if (!spot) { const c = readCached('spot_price.json'); if (c) { try { spot = JSON.parse(c); warns.push('现货使用缓存'); } catch (e) {} } }
+  if (!imp) { const c = readCached('import_data.json'); if (c) { try { imp = JSON.parse(c); warns.push('进口使用缓存'); } catch (e) {} } }
 
-  return { st, sr, oni, ice, fx, warns };
+  return { st, sr, oni, ice, fx, spot, imp, iceQuote, warns };
 }
 
 // ===================== 打分模型（校准版） =====================
@@ -245,7 +279,13 @@ function computeImportParity(ice, fx, sr) {
   }
   const margin5ago = margins.length > 6 ? margins[margins.length - 6].margin : null;
 
-  return { iceLast, importCost, margin, profit, margin5ago, zscore, histLen: margins.length };
+  // 快信号：ICE 短期趋势（抓"今天ICE暴跌"这种慢z-score无感的剧变）
+  const iceCloses = ice.map(x => x.close);
+  const iceMA20 = iceCloses.length >= 20 ? iceCloses.slice(-20).reduce((a, b) => a + b, 0) / 20 : iceLast;
+  const ice5d = iceCloses.length > 5 ? (iceLast - iceCloses[iceCloses.length - 6]) / iceCloses[iceCloses.length - 6] : 0;
+  const iceBelowMA20 = iceLast < iceMA20;
+
+  return { iceLast, importCost, margin, profit, margin5ago, zscore, iceMA20, ice5d, iceBelowMA20, histLen: margins.length };
 }
 
 function scoreImport(parity) {
@@ -269,6 +309,9 @@ function scoreImport(parity) {
     if (d < -0.02) { s += 3; reasons.push(`5日利润率收窄（外盘抬成本传导中）`); }
     else if (d > 0.02) { s -= 3; reasons.push(`5日利润率扩大`); }
   }
+  // 快信号：ICE 短期趋势（补回"今天ICE暴跌"的即时感知）
+  if (parity.iceBelowMA20) { s -= 5; reasons.push(`⚠️ ICE跌破MA20(${parity.iceMA20.toFixed(2)})，外盘转弱`); }
+  if (parity.ice5d < -0.03) { s -= 10; reasons.push(`⚠️ ICE 5日跌${(parity.ice5d * 100).toFixed(1)}%，外强内弱反转风险`); }
   return { score: clamp(s, 0, 100), reasons, ...parity };
 }
 
@@ -322,8 +365,32 @@ function riskCheck(st) {
 
 // ===================== 报告生成 =====================
 async function main() {
-  const { st, sr, oni, ice, fx, warns } = await loadData();
+  const { st, sr, oni, ice, fx, spot, imp, iceQuote, warns } = await loadData();
   if (!st || !sr || !oni) { console.error('数据不完整，无法打分'); return; }
+
+  // ===== 确认位/证伪位自动滚动（每月按最新1年高低点重算，替代硬编码） =====
+  const levelsFile = path.join(DATA, 'levels.json');
+  let levels = { month: '', confirm: CONFIG.sugarConfirmLevel, falsify: CONFIG.sugarFalsifyLevel };
+  if (fs.existsSync(levelsFile)) { try { levels = JSON.parse(fs.readFileSync(levelsFile, 'utf8')); } catch (e) {} }
+  const dataMonth = sr[sr.length - 1].date.slice(0, 7);
+  if (levels.month !== dataMonth || !levels.confirm || levels.confirm <= levels.falsify) {
+    const srCloses1y = sr.slice(-250).map(x => x.close);
+    levels = { month: dataMonth, confirm: Math.max(...srCloses1y), falsify: Math.min(...srCloses1y) };
+    try { fs.writeFileSync(levelsFile, JSON.stringify(levels)); } catch (e) {}
+    warns.push(`确认位/证伪位自动更新：${levels.confirm}/${levels.falsify}（${dataMonth}，1年高低点）`);
+  }
+  CONFIG.sugarConfirmLevel = levels.confirm;
+  CONFIG.sugarFalsifyLevel = levels.falsify;
+
+  // 现货/基差历史累积（每日，供 dashboard 时间追踪）
+  if (spot && spot.nanning && sr.length) {
+    const srLastDate = sr[sr.length - 1].date;
+    const srLastClose = sr[sr.length - 1].close;
+    try {
+      appendHist('spot_nanning', '南宁现货价(元/吨)', srLastDate, spot.nanning);
+      appendHist('basis_nanning', '基差(南宁现货-郑糖)', srLastDate, +(spot.nanning - srLastClose).toFixed(0));
+    } catch (e) { /* 历史累积失败不影响主流程 */ }
+  }
 
   const e = scoreENSO(oni);
   const su = scoreSugar(sr);
@@ -346,7 +413,14 @@ async function main() {
 
   let signal, action;
   if (risk.alerts.some(a => a.includes('🔴'))) { signal = '🔴 清仓'; action = risk.alerts.find(a => a.includes('🔴')); }
-  else if (prob >= CONFIG.zones.add) { signal = '🟢 加仓区'; action = `反转概率≥${CONFIG.zones.add}%，趋势确认，可择机加仓`; }
+  else if (prob >= CONFIG.zones.add) {
+    // 加仓闸门：外盘(ICE)走弱时不加仓，防止在"外强内弱"反转时被慢模型诱多
+    if (ip && ip.iceBelowMA20 && ip.ice5d < 0) {
+      signal = '🟡 持有观察区'; action = `反转概率≥${CONFIG.zones.add}，但ICE跌破MA20(${ip.iceMA20.toFixed(2)})且5日${ip.ice5d < 0 ? '' : '+'}${(ip.ice5d * 100).toFixed(1)}%，加仓被外盘闸门拦住——暂不加仓，等ICE企稳`;
+    } else {
+      signal = '🟢 加仓区'; action = `反转概率≥${CONFIG.zones.add}%，趋势确认，可择机加仓`;
+    }
+  }
   else if (prob >= CONFIG.zones.hold) { signal = '🟡 持有观察区'; action = '反转概率中等，持有为主，等待突破' + CONFIG.sugarConfirmLevel + '确认或跌破' + CONFIG.sugarFalsifyLevel + '证伪'; }
   else { signal = '🟠 减仓区'; action = '反转概率偏低，趋势走弱，逢反弹减仓'; }
 
@@ -394,12 +468,16 @@ async function main() {
   lines.push(`| 数据 | 最新值 |`);
   lines.push(`|------|--------|`);
   lines.push(`| 郑糖主力收盘 | ${su.last.close.toFixed(0)} 元/吨（${su.last.date}） |`);
+  lines.push(`| 现货价(南宁/昆明) | ${spot ? (spot.nanning || '—') + ' / ' + (spot.kunming || '—') + ' 元/吨' : '数据缺失'} |`);
+  lines.push(`| 基差(南宁现货-郑糖) | ${spot && spot.nanning ? (spot.nanning - su.last.close) + ' 元/吨' : '—'} |`);
+  lines.push(`| 最新进口量 | ${imp && imp.latest ? imp.latest.year + '年' + imp.latest.month + '月 ' + imp.latest.importMt + '万吨（同比' + imp.latest.yoyDir + imp.latest.yoyMt + '万吨）' : '数据缺失'} |`);
   lines.push(`| 郑糖MA20/MA60/MA250 | ${su.ma20.toFixed(0)} / ${su.ma60.toFixed(0)} / ${su.ma250 ? su.ma250.toFixed(0) : '-'} |`);
   lines.push(`| 郑糖历史分位 | ${po.pct.toFixed(1)}%（20年区间2807~7548） |`);
   lines.push(`| 中粮糖业收盘 | ${sk.last.close.toFixed(2)} 元（${sk.last.date}） |`);
   lines.push(`| 股价MA20/MA60 | ${sk.ma20.toFixed(2)} / ${sk.ma60.toFixed(2)} |`);
   lines.push(`| ONI 最新 | ${e.last.seas} ${e.last.year} = ${e.last.anom >= 0 ? '+' : ''}${e.last.anom.toFixed(2)} ${e.last.anom >= 0.5 ? '（厄尔尼诺）' : (e.last.anom <= -0.5 ? '（拉尼娜）' : '（中性）')} |`);
   lines.push(`| ICE原糖收盘 | ${ip ? ip.iceLast.toFixed(2) + ' 美分/磅' : '数据缺失'} |`);
+  lines.push(`| ICE实时(盘中) | ${iceQuote ? iceQuote.close.toFixed(2) + ' 美分/磅（' + (iceQuote.close >= ip.iceLast ? '+' : '') + ((iceQuote.close - ip.iceLast) / ip.iceLast * 100).toFixed(1) + '%）' : '—'} |`);
   lines.push(`| USD/CNY 汇率 | ${fx.toFixed(4)} |`);
   lines.push(`| 配额外进口成本 | ${ip ? ip.importCost.toFixed(0) + ' 元/吨' : '-'} |`);
   lines.push(`| 进口利润率(配额外) | ${ip ? (ip.margin >= 0 ? '+' : '') + (ip.margin * 100).toFixed(1) + '%' + (ip.margin < 0 ? '（倒挂）' : '（有利润）') : '-'} |`);
@@ -419,6 +497,14 @@ async function main() {
     lines.push(``);
     lines.push(`- ONI 暖化速率 ${e.warmingRate}，历史数据显示快速变暖后未来 3-6 个月糖价倾向回调（IC -0.23）`);
     lines.push(`- 厄尔尼诺的利多兑现点在约 12 个月后（历史未来12月 +9.0%），短期不宜追高`);
+    lines.push(``);
+  }
+  // 外盘(ICE)快速走弱警报：外强内弱反转，建议提前减仓
+  if (ip && ip.iceBelowMA20 && ip.ice5d < -0.03) {
+    lines.push(`## ⚠️ 外盘走弱警报（外强内弱反转风险）`);
+    lines.push(``);
+    lines.push(`- ICE 已跌破 MA20（${ip.iceMA20.toFixed(2)}），5日跌 ${(ip.ice5d * 100).toFixed(1)}%`);
+    lines.push(`- "外强内弱→内盘补涨"的支柱正在动摇，若郑糖跟进下跌，建议减仓至 15%`);
     lines.push(``);
   }
   if (risk.alerts.length) {

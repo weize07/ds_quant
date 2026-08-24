@@ -353,6 +353,16 @@ const kpi = {
   maxLag: maxLag, maxLagVal: maxLagVal == null ? null : +maxLagVal.toFixed(3)
 };
 
+// ===== 基本面数据（巴西/印度/产销）——生成时读取并嵌入 HTML =====
+const INTL_DATA = {};
+for (const [key, file] of [['brazil', 'brazil_unica.json'], ['india', 'india_isma.json'], ['thailand', 'thailand_ocsb.json'], ['asmc', 'asmc_weather.json'], ['tangxie', 'tangxie_data.json']]) {
+  try { INTL_DATA[key] = JSON.parse(fs.readFileSync(path.join(DATA, file), 'utf8')); } catch (e) { INTL_DATA[key] = null; }
+}
+
+// 基本面时间序列（累积历史）
+let HIST_DATA = {};
+try { HIST_DATA = JSON.parse(fs.readFileSync(path.join(DATA, 'fundamentals_history.json'), 'utf8')); } catch (e) { HIST_DATA = {}; }
+
 // ===================== HTML 模板 =====================
 const hasLocalEcharts = fs.existsSync(path.join(ROOT, 'lib', 'echarts.min.js'));
 const echartsSrc = hasLocalEcharts ? 'lib/echarts.min.js' : 'https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js';
@@ -419,6 +429,7 @@ const html = `<!DOCTYPE html>
   <div class="kpi"><div class="label">进口利润率</div><div class="val">${kpi.importMargin != null ? (kpi.importMargin >= 0 ? '+' : '') + kpi.importMargin + '%' : '—'}</div><div class="note">z-score ${kpi.importZscore != null ? (kpi.importZscore >= 0 ? '+' : '') + kpi.importZscore : '—'}｜${kpi.importZscore != null && kpi.importZscore < -1.5 ? '极低→偏多' : (kpi.importZscore > 1.5 ? '极高→偏空' : '中性')}</div></div>
   <div class="kpi"><div class="label">厄尔尼诺 ONI</div><div class="val">${kpi.oniVal >= 0 ? '+' : ''}${kpi.oniVal.toFixed(2)}</div><div class="note"><span class="tag ${kpi.oniTag === '厄尔尼诺' ? 'red' : (kpi.oniTag === '拉尼娜' ? 'blue' : 'gray')}">${kpi.oniTag}</span> 暖化${kpi.oniWarming >= 0 ? '+' : ''}${kpi.oniWarming}｜因子${kpi.ensoScore}分</div></div>
 </div>
+<div id="headline" style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:14px;font-weight:500;color:#7f1d1d"></div>
 <details class="reasoning headline-reasoning">
   <summary>展开“反转概率”模型说明与当前观察要点</summary>
   <p>“反转概率”是本仪表盘用于辅助决策的模型评分，表示糖周期出现反转/上行条件的综合确认度；它不是对未来涨跌的保证，也不是可直接当作胜率或仓位建议的预测。</p>
@@ -456,6 +467,16 @@ const html = `<!DOCTYPE html>
   <div class="card wide"><h3>进口利润率 + z-score 历史（"外强内弱"压缩可视化）</h3><div id="c13" class="chart"></div><details class="reasoning"><summary>展开进口利润率/z-score 公式</summary><div class="formula">进口利润率 = (郑糖价格 - 配额外进口成本) / 配额外进口成本</div><div class="formula">进口利润 z-score = (当前利润率 - 250日均值) / 250日标准差</div><ul><li>利润率 &gt; 0：进口糖有利可图，可能增加供给、压制内盘。</li><li>利润率 &lt; 0：进口倒挂，外盘强势传导为进口成本上升，对国内价格偏多。</li><li>z-score 低于 -1.5 视为进口利润极低/倒挂偏深，模型中偏多；高于 +1.5 则偏空。</li></ul></details></div>
 
   <div class="card wide"><h3>药用糖 / 公司事件时间轴（2025-2026 上涨的核心驱动）</h3><div id="c14" style="padding-top:6px"></div></div>
+
+  <div class="card wide"><h3>巴西 UNICA 制糖比例（全球糖市最硬的基本面，双周数据）</h3><div id="c15" style="padding-top:6px"></div></div>
+
+  <div class="card wide"><h3>印度 ISMA 产量（厄尔尼诺减产的另一主角）</h3><div id="c16" style="padding-top:6px"></div></div>
+
+  <div class="card wide"><h3>国内产销数据（产糖量/销糖率/工业库存，糖协口径）</h3><div id="c17" style="padding-top:6px"></div></div>
+
+  <div class="card wide"><h3>泰国 OCSB 产量（第二大出口国，厄尔尼诺干旱敏感区）</h3><div id="c18" style="padding-top:6px"></div></div>
+
+  <div class="card wide"><h3>基本面时间追踪（随每次抓取累积，数据点会越来越多）</h3><div id="c19" class="chart" style="height:460px"></div></div>
 </div>
 </div>
 
@@ -474,6 +495,8 @@ const html = `<!DOCTYPE html>
 <script>
 const DATA = ${JSON.stringify(chartData)};
 const KPI = ${JSON.stringify(kpi)};
+const INTL = ${JSON.stringify(INTL_DATA)};
+const HIST = ${JSON.stringify(HIST_DATA)};
 const INFO_SOURCES = [
   { category: '糖业资讯/现货/产销', source: '沐甜科技', url: 'https://www.msweet.com.cn/mtkj/index/index.html', contribution: '国内糖业资讯、现货报价、进口月报、产销、仓单、持仓、政策与机构观点', frequency: '每日/事件驱动', factors: '现货/产销、进口利润/内外价差、行业政策、量仓确认', status: '人工跟踪；重要事件进入资讯摘要' },
   { category: '期货/现货行情', source: '郑州商品交易所 / 郑糖', url: 'https://www.czce.com.cn/', contribution: '郑糖期货价格、成交量、持仓量、仓单与交易规则', frequency: '日更（交易日）', factors: '郑糖/统计、历史位置、量仓确认', status: '仪表盘行情辅助核验；官方数据人工复核' },
@@ -848,6 +871,130 @@ function lineOpt(xData, series, markLine) {
     events.map(e => '<tr><td style="white-space:nowrap">' + e[0] + '</td><td style="text-align:left">' + e[1] + '</td></tr>').join('') +
     '</table>' +
     '<div style="font-size:12px;color:#6b7280;margin-top:8px">⚠️ 关键提醒：股价近 3 年与糖价脱钩（r=-0.82），上涨主要由"药用糖国产替代 + 央企改革 + 高分红"驱动，而非糖价。糖价反转只是其中一个期权。</div>';
+})();
+
+// C15 巴西 UNICA 制糖比例
+(function () {
+  const br = INTL.brazil;
+  if (!br || !br.month || br.month.sugarMix == null) {
+    document.getElementById('c15').innerHTML = '<div style="font-size:13px;color:#6b7280">数据待抓取（运行 node fetch_brazil.js）</div>';
+    return;
+  }
+  const mixDelta = (br.month.sugarMix - br.month.sugarMixPrev).toFixed(2);
+  const cumDelta = (br.cumulative.sugarMix - br.cumulative.sugarMixPrev).toFixed(2);
+  const arrow = d => d < 0 ? '<span style="color:#16a34a">▼</span>' : '<span style="color:#dc2626">▲</span>';
+  document.getElementById('c15').innerHTML =
+    '<table class="corr"><tr><th>指标（' + br.reportMonth + '）</th><th>当期</th><th>去年同期</th><th>变化</th><th>解读</th></tr>' +
+    '<tr><td style="text-align:left">当月制糖比例</td><td><b>' + br.month.sugarMix + '%</b></td><td>' + br.month.sugarMixPrev + '%</td><td>' + arrow(mixDelta) + ' ' + mixDelta + 'pp</td><td style="text-align:left">' + (mixDelta < 0 ? '更多甘蔗转乙醇→糖供给收缩→利多' : '制糖比例回升→偏空') + '</td></tr>' +
+    '<tr><td style="text-align:left">累计制糖比例(榨季)</td><td><b>' + br.cumulative.sugarMix + '%</b></td><td>' + br.cumulative.sugarMixPrev + '%</td><td>' + arrow(cumDelta) + ' ' + cumDelta + 'pp</td><td style="text-align:left">' + (cumDelta < 0 ? '榨季整体转乙醇→糖产量下修' : '—') + '</td></tr>' +
+    '<tr><td style="text-align:left">单月压榨量</td><td>' + br.month.caneCrushMt + '万吨</td><td>—</td><td>' + (br.month.caneCrushYoy ? '同比' + br.month.caneCrushYoy + '%' : '') + '</td><td style="text-align:left">' + (br.month.caneCrushYoy && +br.month.caneCrushYoy < 0 ? '压榨减少' : '') + '</td></tr>' +
+    '<tr><td style="text-align:left">单月糖产量</td><td>' + br.month.sugarProdMt + '万吨</td><td>—</td><td>同比-26%</td><td style="text-align:left">糖产量大降</td></tr>' +
+    '<tr><td style="text-align:left">单月乙醇</td><td>' + br.month.ethanolBil + '亿升</td><td>—</td><td>+2.47%</td><td style="text-align:left">乙醇增产</td></tr>' +
+    '</table>' +
+    '<div style="font-size:12px;color:#6b7280;margin-top:8px">来源：' + br.source + '（intsugar-tc 转载 UNICA 官方数据）｜频率双周｜' + br.fetchDate + ' 抓取</div>';
+})();
+
+// C16 印度 ISMA 产量
+(function () {
+  const ind = INTL.india;
+  if (!ind) {
+    document.getElementById('c16').innerHTML = '<div style="font-size:13px;color:#6b7280">数据待抓取（运行 node fetch_india.js）</div>';
+    return;
+  }
+  document.getElementById('c16').innerHTML =
+    '<table class="corr"><tr><th>指标</th><th>数值</th></tr>' +
+    '<tr><td style="text-align:left">2025/26榨季净产量(ISMA)</td><td><b>' + ind.netProductionMt + ' 万吨</b></td></tr>' +
+    '<tr><td style="text-align:left">上榨季产量</td><td>' + (ind.prevYearMt || '—') + ' 万吨</td></tr>' +
+    '<tr><td style="text-align:left">进口批准</td><td style="text-align:left">' + (ind.importApproval || '—') + '</td></tr>' +
+    '<tr><td style="text-align:left">进口执行截止</td><td>' + (ind.importDeadline || '—') + '</td></tr>' +
+    '</table>' +
+    '<div style="font-size:13px;margin-top:8px;color:#dc2626">🔥 ' + ind.status + '</div>' +
+    '<div style="font-size:12px;color:#6b7280;margin-top:6px">来源：' + ind.source + '｜' + ind.fetchDate + ' 抓取</div>';
+})();
+
+// C17 国内产销数据
+(function () {
+  const tx = INTL.tangxie;
+  if (!tx || !tx.productionMt) {
+    document.getElementById('c17').innerHTML = '<div style="font-size:13px;color:#6b7280">数据待抓取（运行 node fetch_tangxie.js）</div>';
+    return;
+  }
+  document.getElementById('c17').innerHTML =
+    '<table class="corr"><tr><th>指标（' + tx.cropYear + '榨季，截至' + tx.asOf + '）</th><th>数值</th></tr>' +
+    '<tr><td style="text-align:left">产糖量</td><td><b>' + tx.productionMt + ' 万吨</b></td></tr>' +
+    '<tr><td style="text-align:left">销糖量</td><td>' + (tx.salesMt != null ? tx.salesMt + ' 万吨' : '—') + '</td></tr>' +
+    '<tr><td style="text-align:left">销糖率</td><td>' + (tx.salesRate != null ? tx.salesRate + '%' : '—') + '</td></tr>' +
+    '<tr><td style="text-align:left">工业库存</td><td>' + (tx.inventoryMt != null ? tx.inventoryMt + ' 万吨' : '—') + '</td></tr>' +
+    '</table>' +
+    '<div style="font-size:12px;color:#6b7280;margin-top:8px">来源：' + tx.source + '｜每月更新文章URL（运行 fetch_tangxie.js）</div>';
+})();
+
+// C18 泰国 OCSB 产量
+(function () {
+  const th = INTL.thailand;
+  if (!th) {
+    document.getElementById('c18').innerHTML = '<div style="font-size:13px;color:#6b7280">数据待抓取（运行 node fetch_thailand.js）</div>';
+    return;
+  }
+  const w = INTL.asmc;
+  document.getElementById('c18').innerHTML =
+    '<table class="corr"><tr><th>指标</th><th>数值</th></tr>' +
+    '<tr><td style="text-align:left">' + th.cropYear + '榨季产糖</td><td><b>' + th.productionMt + ' 万吨</b></td></tr>' +
+    '<tr><td style="text-align:left">下榨季预警</td><td style="text-align:left">' + (th.nextSeasonWarning || '—') + '</td></tr>' +
+    (w ? '<tr><td style="text-align:left">天气信号(ASMC ' + w.month + ')</td><td style="text-align:left">' + (w.signal === '偏干' ? '<b style="color:#dc2626">偏干（干旱风险，利多糖价）</b>' : w.signal) + '</td></tr>' : '') +
+    '</table>' +
+    '<div style="font-size:13px;margin-top:8px;color:#dc2626">🔥 ' + th.status + '</div>' +
+    '<div style="font-size:12px;color:#6b7280;margin-top:6px">来源：' + th.source + (w ? '｜天气：' + w.source : '') + '｜' + th.fetchDate + ' 抓取</div>';
+})();
+
+// 全球减产头条
+(function () {
+  const b = INTL.brazil, i = INTL.india, t = INTL.thailand;
+  const parts = [];
+  if (b && b.month && b.month.sugarMix != null) {
+    const delta = (b.month.sugarMix - b.month.sugarMixPrev).toFixed(1);
+    parts.push('巴西制糖比例 ' + b.month.sugarMix + '%（' + (delta < 0 ? '' : '+') + delta + 'pp，糖产量-26%）');
+  }
+  if (i) parts.push('印度转进口国（免税进口100万吨）');
+  if (t) parts.push('泰国预警超级厄尔尼诺（甘蔗或降至1亿吨）');
+  document.getElementById('headline').innerHTML = parts.length
+    ? '🔥 全球三大主产国同向减产：' + parts.join('｜')
+    : '🔥 基本面头条待抓取（运行 fetch_brazil/india/thailand.js）';
+})();
+
+// C19 基本面时间追踪
+(function () {
+  const panels = [
+    { keys: ['spot_nanning'], unit: '元/吨' },
+    { keys: ['basis_nanning'], unit: '元/吨' },
+    { keys: ['brazil_sugarMix', 'brazil_cumMix'], unit: '%' },
+    { keys: ['tangxie_salesRate'], unit: '%' },
+    { keys: ['tangxie_inventory'], unit: '万吨' }
+  ];
+  const tops = [30, 106, 182, 258, 334], height = 68;
+  const grids = [], xAxes = [], yAxes = [], series = [];
+  panels.forEach((p, i) => {
+    grids.push({ left: 64, right: 20, top: tops[i], height: height });
+    let dates = [];
+    p.keys.forEach(k => { if (HIST[k]) HIST[k].series.forEach(s => { if (!dates.includes(s.date)) dates.push(s.date); }); });
+    dates.sort();
+    xAxes.push({ type: 'category', data: dates, gridIndex: i, axisLabel: { fontSize: 10 } });
+    yAxes.push({ type: 'value', gridIndex: i, name: p.unit, nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 } });
+    p.keys.forEach(k => {
+      if (!HIST[k] || !HIST[k].series.length) return;
+      const map = new Map(HIST[k].series.map(s => [s.date, s.value]));
+      series.push({ name: HIST[k].label, type: 'line', xAxisIndex: i, yAxisIndex: i, data: dates.map(d => map.has(d) ? map.get(d) : null), showSymbol: true, symbolSize: 7 });
+    });
+  });
+  const hasData = series.length > 0;
+  const opt = {
+    grid: grids, xAxis: xAxes, yAxis: yAxes,
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, textStyle: { fontSize: 11 } },
+    series: series,
+    title: hasData ? null : { text: '暂无历史数据（运行 monitor.js / fetch 脚本后累积）', left: 'center', top: 'middle', textStyle: { fontSize: 13, color: '#9ca3af' } }
+  };
+  echarts.init(document.getElementById('c19')).setOption(opt);
 })();
 
 // C7 相关性结论表
